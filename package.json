@@ -17,10 +17,11 @@
   },
   "types": "dist/index.d.ts",
   "devDependencies": {
-    "@directus/api": "^19.2.0",
-    "@directus/extensions-sdk": "^11.0.6",
-    "@directus/types": "^11.1.2",
-    "@types/node": "^20.11.0",
     "typescript": "^5.4.3"
+  },
+  "dependencies": {
+    "@directus/api": "^19.2.0",
+    "@directus/extensions": "^1.0.6",
+    "@directus/types": "^11.1.2"
   }
 }
