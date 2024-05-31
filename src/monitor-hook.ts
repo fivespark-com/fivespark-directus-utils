@@ -1,6 +1,5 @@
 import type { NonNull } from './types/select.js';
 import type {
-  ApiFilterHookMetaData,
   DirectusFilterHookFunction,
   DirectusHookRegisterFunctions,
   DirectusRuntimeContext,
@@ -9,33 +8,23 @@ import type {
 } from './directus.js';
 import { createHash } from 'crypto';
 
-export type FivesparkMonitorHookMutations<T = Item> = Array<{
-  action: 'create' | 'update';
+export type FivesparkMonitorHookMutations<ItemType, IsPartial extends boolean> = Array<{
+  action: 'create' | 'update' | 'delete';
   /** Primary key of the item */
   key: PrimaryKey;
   /** Old data for monitored fields */
-  previous: Partial<T>;
+  previous: IsPartial extends true ? Partial<ItemType> : ItemType;
   /** New data for monitored fields */
-  current: Partial<T>;
-}>;
-export type FivesparkMonitorHookCallbackFunction<T extends Item = Item> = (
-  mutations: FivesparkMonitorHookMutations<T>,
-  meta: { collection: string; event: string; payload: Partial<T> },
-  context: NonNull<Parameters<Parameters<DirectusHookRegisterFunctions['action']>[1]>[1], 'schema' | 'accountability'>,
-) => void | Promise<void>;
-export type FivesparkMonitorHookCallback<T = Item> = (
-  payload: FivesparkMonitorHookMutations<T>,
-  meta: ApiFilterHookMetaData,
-  context: NonNull<Parameters<Parameters<DirectusHookRegisterFunctions['filter']>[1]>[1], 'schema' | 'accountability'>,
-) => any;
-export type FivesparkMonitorHookFunction<T = Item> = (
-  event: string,
+  current: IsPartial extends true ? Partial<ItemType> : ItemType;
   /**
-   * Fields to monitor for changes. Pass empty array to monitor all fields.
+   * Utility function to easily check for particular changes.
+   * @example
+   * mutation.hasChanged('status'); // true if status changed
+   * mutation.hasChanged('status', 'draft'); // true if status changed from 'draft' to something else
+   * mutation.hasChanged('status', 'draft', 'published') // true if status changed from 'draft' to 'published'
    */
-  monitorFields: string[],
-  handler: FivesparkMonitorHookCallback<T>,
-) => void;
+  hasChanged(field: keyof ItemType, from?: any, to?: any): boolean;
+}>;
 
 let lastHookId = 0;
 export function createMonitorHook(
@@ -43,11 +32,60 @@ export function createMonitorHook(
   filter: DirectusFilterHookFunction,
   action: DirectusHookRegisterFunctions['action'],
 ) {
-  return function monitor<ItemType extends Item>(
+  return function monitor<ItemType extends Item = Item, K extends keyof ItemType = keyof ItemType>(
+    /**
+     * Collection to monitor for changes
+     */
     monitorCollection: string,
-    monitorFields: string[],
-    handler: FivesparkMonitorHookCallbackFunction<ItemType>,
+    /**
+     * Fields to monitor. Pass empty array to monitor all fields.
+     */
+    monitorFieldsOrOptions:
+      | K[]
+      | {
+          /**
+           * Fields to monitor. Pass empty array to monitor all fields.
+           */
+          fields: K[];
+          /**
+           * Whether to include values for monitored fields that did not change during mutations to other monitored fields.
+           * By default only fields that actually changed are included in the `current` and `previous` data.
+           * @default false
+           */
+          includeUnchanged: boolean;
+          /**
+           * Which events to handle. Defaults to all events.
+           * @default ['create', 'update', 'delete']
+           */
+          events?: Array<'create' | 'update' | 'delete'>;
+        },
+    handler: // <
+    // ---------------------------------------------------------------------------------------------------------------
+    // <IsPartial extends boolean = typeof monitorFieldsOrOptions extends { includeUnchanged: true } ? false : true>
+    // ---------------------------------------------------------------------------------------------------------------
+    // This doesn't look like it's currently implemented correctly in TypeScript:
+    // `IsPartial` always becomes `true` regardless of the value of `monitorFieldsOrOptions.includeUnchanged`
+    // As workaround, let caller decide whether to pass `Type` or `Partial<Type>` to the `monitor<Type>` generic.
+    // TODO: Create multiple `monitor` function signatures to handle this. Might need to refactor it for that
+    // IsPartial extends boolean = false,
+    //>
+    (
+      mutations: FivesparkMonitorHookMutations<ItemType, false>,
+      meta: { collection: string; event: string; payload: Partial<ItemType> },
+      context: NonNull<
+        Parameters<Parameters<DirectusHookRegisterFunctions['action']>[1]>[1],
+        'schema' | 'accountability'
+      >,
+    ) => void | Promise<void>,
   ) {
+    const monitorOptions = {
+      fields: monitorFieldsOrOptions instanceof Array ? monitorFieldsOrOptions : monitorFieldsOrOptions.fields,
+      includeUnchanged: monitorFieldsOrOptions instanceof Array ? false : monitorFieldsOrOptions.includeUnchanged,
+      events:
+        monitorFieldsOrOptions instanceof Array || !monitorFieldsOrOptions.events
+          ? ['create', 'update', 'delete']
+          : monitorFieldsOrOptions.events,
+    };
     const logger = directus.logger.child({}, { msgPrefix: '[monitor hook]' });
     const mutationsInProgress: Record<
       string,
@@ -56,11 +94,15 @@ export function createMonitorHook(
         event: string;
         keys: PrimaryKey[];
         fields: string[];
-        current: Array<{ key?: PrimaryKey; data: Partial<ItemType> }>;
+        current: Array<{ key?: PrimaryKey; data: ItemType }>;
       }
     > = {};
 
-    const events = [`${monitorCollection}.items.create`, `${monitorCollection}.items.update`];
+    const events = [
+      ...(monitorOptions.events.includes('create') ? [`${monitorCollection}.items.create`] : []),
+      ...(monitorOptions.events.includes('update') ? [`${monitorCollection}.items.update`] : []),
+      ...(monitorOptions.events.includes('delete') ? [`${monitorCollection}.items.delete`] : []),
+    ];
     const hookId = lastHookId++;
     const createFingerprint = (event: string, keys: PrimaryKey[] | undefined) => {
       return createHash('md5')
@@ -74,16 +116,21 @@ export function createMonitorHook(
           // No need to get current values for create events (NOTE we could also prevent binding the filter hook for this event)
           return;
         }
-        if (!meta.event.endsWith('.items.update')) {
+        if (!meta.event.endsWith('.items.update') && !meta.event.endsWith('.items.delete')) {
           // Not an update event, error
           throw new Error(`Unexpected event ${meta.event}`);
         }
+        const eventName = meta.event.split('.').pop() as 'create' | 'update' | 'delete';
         const { collection } = meta;
         const { schema, accountability } = context;
-        const fields = Object.keys(payload).filter(
-          (field) => monitorFields.length === 0 || monitorFields.includes(field),
-        );
-        const keys = (meta.keys ?? [meta.key]) as PrimaryKey[];
+        const fields =
+          monitorOptions.includeUnchanged || eventName === 'delete'
+            ? monitorOptions.fields
+            : (Object.keys(payload) as K[]).filter(
+                (field) => monitorOptions.fields.length === 0 || monitorOptions.fields.includes(field),
+              );
+        const keys =
+          eventName === 'delete' ? (payload as unknown as PrimaryKey[]) : ((meta.keys ?? [meta.key]) as PrimaryKey[]);
 
         // Fingerprint this event so we can add it to the mutationsInProgress object
         const fingerprint = createFingerprint(event, keys);
@@ -100,7 +147,7 @@ export function createMonitorHook(
           timestamp: Date.now(),
           event,
           keys,
-          fields,
+          fields: fields as string[],
           current: currentItems.map((item) => {
             const key = item[primaryKeyField];
             const data = { ...item };
@@ -129,25 +176,26 @@ export function createMonitorHook(
       // Use action hook to trigger the callback after data has been committed to the database
       action(event, async (meta, context) => {
         const { collection, payload } = meta;
-        if (event.endsWith('.items.create')) {
+        const eventName = meta.event.split('.').pop() as 'create' | 'update' | 'delete';
+        if (eventName === 'create') {
           // Shortcut for create events, we don't need to compare with previous data
           const current = { ...payload };
           // Remove fields not being monitored
-          for (const key of Object.keys(current)) {
-            if (!monitorFields.includes(key)) {
+          for (const key of Object.keys(current) as K[]) {
+            if (!monitorOptions.fields.includes(key)) {
               delete current[key];
             }
           }
           // Set monitored fields not being set to null
-          for (const field of monitorFields) {
+          for (const field of monitorOptions.fields) {
             if (typeof current[field] === 'undefined') {
               current[field] = null;
             }
           }
           try {
-            const mutations = [
-              { action: 'create', key: meta.key, previous: {}, current },
-            ] as FivesparkMonitorHookMutations<ItemType>;
+            const mutations = [{ action: 'create', key: meta.key, previous: {}, current }] as Parameters<
+              typeof handler
+            >[0]; //as FivesparkMonitorHookMutations<ItemType, false>;
             await handler(mutations, { collection, event, payload }, context as any);
           } catch (error) {
             logger.error(`Error in monitor hook handler for event ${event}`, error);
@@ -167,43 +215,76 @@ export function createMonitorHook(
         // Remove from state
         delete mutationsInProgress[fingerprint];
 
+        if (event.endsWith('.items.delete')) {
+          // Shortcut for delete events, we don't need to compare with previous data
+          try {
+            const mutations = mutation.current.map((m) => ({
+              action: 'delete',
+              key: m.key,
+              previous: m.data,
+              current: {},
+              hasChanged(field, from, to) {
+                return false;
+              },
+            })) as Parameters<typeof handler>[0]; // as FivesparkMonitorHookMutations<ItemType, false>;
+            await handler(mutations, { collection, event, payload }, context as any);
+          } catch (error) {
+            logger.error(`Error in monitor hook handler for event ${event}`, error);
+          }
+        }
+
         // Check if the fields changed (might happen if other filter hooks changed the data to be saved)
         // Remove current data for fields not being updated after all
-        const fields = Object.keys(payload).filter(
-          (field) => monitorFields.length === 0 || monitorFields.includes(field),
-        );
-        const removedFields = mutation.fields.filter((field) => !fields.includes(field));
+        const fields = monitorOptions.includeUnchanged
+          ? monitorOptions.fields
+          : (Object.keys(payload) as K[]).filter(
+              (field) => monitorOptions.fields.length === 0 || monitorOptions.fields.includes(field),
+            );
+        const removedFields = mutation.fields.filter((field) => !fields.includes(field as K));
         for (const removedField of removedFields) {
-          mutation.current.forEach((item) => delete item.data[removedField]);
+          mutation.current.forEach((item) => delete item.data[removedField as K]);
         }
         // Warn about added fields
-        const addedFields = fields.filter((field) => !mutation.fields.includes(field));
+        const addedFields = fields.filter((field) => !mutation.fields.includes(field as string));
         for (const addedField of addedFields) {
           logger.warn(
-            `Field ${addedField} was added by another filter hook after the mutation was prepared for event ${event}`,
+            `Field ${addedField as string} was added by another filter hook after the mutation was prepared for event ${event}`,
           );
         }
 
         // Prepare mutations array
-        const mutations = [] as FivesparkMonitorHookMutations<ItemType>;
+        const mutations = [] as Parameters<typeof handler>[0];
         for (const key of keys) {
-          const current = (mutation.current.find((item) => item.key === key) as any).data as ItemType;
-          const updates = { ...payload };
+          const previous = (mutation.current.find((item) => `${item.key}` === `${key}`) as any).data as ItemType;
+          const current = {
+            ...(monitorOptions.includeUnchanged ? previous : {}),
+            ...payload,
+          };
 
-          const hasChangesToMonitoredFields = monitorFields.some((field) => current[field] !== updates[field]);
+          const hasChangesToMonitoredFields = monitorOptions.fields.some((field) => previous[field] !== current[field]);
           if (hasChangesToMonitoredFields) {
-            // Shake out unchanged values and fields not being monitored
-            for (const field of [...Object.keys(current), ...Object.keys(updates)]) {
-              if (!monitorFields.includes(field) || current[field] === updates[field]) {
+            // Shake out fields not being monitored and fields that didn't change (unless includeUnchanged is set to true)
+            for (const field of [...Object.keys(previous), ...Object.keys(current)]) {
+              if (
+                !monitorOptions.fields.includes(field as K) ||
+                (!monitorOptions.includeUnchanged && previous[field] === current[field])
+              ) {
+                delete previous[field];
                 delete current[field];
-                delete updates[field];
               }
             }
             mutations.push({
               action: 'update',
               key,
-              previous: current,
-              current: updates,
+              previous,
+              current,
+              hasChanged(field, from, to) {
+                return (
+                  this.previous[field] !== this.current[field] &&
+                  (typeof from === 'undefined' || this.previous[field] === from) &&
+                  (typeof to === 'undefined' || this.current[field] === to)
+                );
+              },
             });
           }
         }
