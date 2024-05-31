@@ -5,8 +5,8 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "install": "npm install && npm run build",
-    "build": "tsc",
+    "prepare": "npm run build",
+    "build": "tsc && cp -R ./src/types ./dist/types",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "private": true,
@@ -17,10 +17,11 @@
   },
   "types": "dist/index.d.ts",
   "devDependencies": {
-    "@directus/api": "^19.2.0",
-    "@directus/extensions-sdk": "^11.0.6",
-    "@directus/types": "^11.1.2",
-    "@types/node": "^20.11.0",
     "typescript": "^5.4.3"
+  },
+  "dependencies": {
+    "@directus/api": "^19.2.0",
+    "@directus/extensions": "^1.0.6",
+    "@directus/types": "^11.1.2"
   }
 }

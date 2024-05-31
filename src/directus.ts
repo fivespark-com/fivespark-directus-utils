@@ -3,9 +3,6 @@
 import type { Knex } from 'knex';
 export type { Knex } from 'knex';
 
-/**
- * `PrimaryKey` used to be in 'directus/dist/types'
- */
 import type { Item, PrimaryKey } from '@directus/types';
 export type { Item, PrimaryKey } from '@directus/types';
 export type { MutationOptions } from '@directus/api/dist/types';
@@ -20,13 +17,13 @@ export type {
   LogicalFilter,
   LogicalFilterAND,
   LogicalFilterOR,
-} from '@directus/types/dist/filter';
+} from '@directus/types';
 import type { Request, Response, Router as CreateExpressRouter } from 'express';
 export { type ItemsService } from '@directus/api/dist/services/items';
-import { type Accountability } from '@directus/types/dist/accountability';
-export { type Accountability } from '@directus/types/dist/accountability';
-import { type SchemaOverview } from '@directus/types/dist/schema';
-import DirectusServices from '@directus/api/dist/services';
+import { type Accountability } from '@directus/types';
+export { type Accountability } from '@directus/types';
+import { type SchemaOverview } from '@directus/types';
+import * as DirectusServices from '@directus/api/dist/services';
 
 /**
  * Context available in action/filter hook contexts and endpoint requests
@@ -87,10 +84,10 @@ export type DirectusOneToAnyItem = {
   item: any;
 };
 
-import { defineEndpoint as _defineEndpoint, defineHook as _defineHook } from '@directus/extensions-sdk';
+import { defineEndpoint as _defineEndpoint, defineHook as _defineHook } from '@directus/extensions';
 import type { NonNull, Refactor } from './types/select.js';
 import { endpointAuth } from './auth.js';
-import { type FivesparkMonitorHookFunction, createMonitorHook } from './monitor-hook.js';
+import { createMonitorHook } from './monitor-hook.js';
 
 // Fix the type for `services` in `defineEndpoint` context callback function
 type EndpointConfigFunction = Extract<Parameters<typeof _defineEndpoint>[0], (router: any, context: any) => any>;
@@ -198,9 +195,9 @@ type HookRegisterFunctions = Omit<DirectusHookRegisterFunctions, 'action' | 'fil
     handler: (payload: T, meta: ApiFilterHookMetaData, context: DirectusFilterHookContext) => void,
   ) => void;
   /**
-   * NEW: Fivespark "mutations" hooks - only get notified if data actually changed
+   * Custom Fivespark "mutations" hooks - only get notified if data actually changed
    */
-  monitor: FivesparkMonitorHookFunction;
+  monitor: ReturnType<typeof createMonitorHook>;
 };
 export type DirectusFilterHookFunction = HookRegisterFunctions['filter'];
 
