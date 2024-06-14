@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2019",
     "lib": ["ES2019", "DOM"],
-    "moduleResolution": "node",
+    "moduleResolution": "Bundler",
     "strict": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,

@@ -1,6 +1,4 @@
-import type { MutationOptions } from '@directus/api/dist/types/items.js';
-import type { Item, PrimaryKey, FieldFilter } from '@directus/types';
-import type { DirectusRuntimeContext, FivesparkDataHubContext } from './directus.js';
+import type { DirectusRuntimeContext, FivesparkDataHubContext, MutationOptions, Item, PrimaryKey, FieldFilter } from './directus.js';
 
 /**
  * Performs a minimal update to an existing item by checking which fields will actually change.
