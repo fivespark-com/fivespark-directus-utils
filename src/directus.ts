@@ -5,8 +5,8 @@ export type { Knex } from 'knex';
 
 import type { Item, PrimaryKey } from '@directus/types';
 export type { Item, PrimaryKey } from '@directus/types';
-export type { MutationOptions } from '@directus/api/dist/types';
-export type { Query, DeepQuery, Aggregate, NestedDeepQuery } from '@directus/types/dist/query';
+export type { MutationOptions } from '@directus/api/types/index';
+export type { Query, DeepQuery, Aggregate, NestedDeepQuery } from '@directus/types';
 export type {
   Filter,
   ClientFilterOperator,
@@ -19,11 +19,10 @@ export type {
   LogicalFilterOR,
 } from '@directus/types';
 import type { Request, Response, Router as CreateExpressRouter } from 'express';
-export { type ItemsService } from '@directus/api/dist/services/items';
 import { type Accountability } from '@directus/types';
 export { type Accountability } from '@directus/types';
 import { type SchemaOverview } from '@directus/types';
-import * as DirectusServices from '@directus/api/dist/services';
+import * as DirectusServices from '@directus/api/services/index';
 
 /**
  * Context available in action/filter hook contexts and endpoint requests
