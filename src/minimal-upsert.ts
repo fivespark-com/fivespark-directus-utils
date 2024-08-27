@@ -177,7 +177,7 @@ export async function minimalUpsert<T extends Item>(
       : { collectionInfo: service.schema.collections[service.collection]!, fieldInfo: null };
 
     const pkField = collectionInfo.primary;
-    if (current instanceof Array && updated instanceof Array) {
+    if (fieldInfo?.type !== 'json' && current instanceof Array && updated instanceof Array) {
       // o2m relation. Sort by PK field, compare all items in array
       const pkField = collectionInfo.primary;
       current.sort((a, b) => (a[pkField] < b[pkField] ? -1 : 1));
