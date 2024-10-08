@@ -52,12 +52,18 @@ export function createMonitorHook(
            * By default only fields that actually changed are included in the `current` and `previous` data.
            * @default false
            */
-          includeUnchanged: boolean;
+          includeUnchanged?: boolean;
           /**
            * Which events to handle. Defaults to all events.
            * @default ['create', 'update', 'delete']
            */
           events?: Array<'create' | 'update' | 'delete'>;
+          /**
+           * Whether to use the accountability of the user that performed the update.
+           * Set to false if the user has no permissions to access the fields.
+           * @default true
+           */
+          useAccountability?: boolean;
         },
     handler: // <
     // ---------------------------------------------------------------------------------------------------------------
@@ -85,6 +91,7 @@ export function createMonitorHook(
         monitorFieldsOrOptions instanceof Array || !monitorFieldsOrOptions.events
           ? ['create', 'update', 'delete']
           : monitorFieldsOrOptions.events,
+      useAccountability: monitorFieldsOrOptions instanceof Array ? true : monitorFieldsOrOptions.useAccountability,
     };
     const logger = directus.logger.child({}, { msgPrefix: '[monitor hook]' });
     const mutationsInProgress: Record<
@@ -136,7 +143,7 @@ export function createMonitorHook(
         const fingerprint = createFingerprint(event, keys);
 
         // Fetch current data of changed items
-        const itemsService = new directus.services.ItemsService<ItemType>(collection, { schema, accountability });
+        const itemsService = new directus.services.ItemsService<ItemType>(collection, { schema, accountability : monitorOptions.useAccountability ? accountability : null });
         const primaryKeyField = schema.collections[collection].primary;
         const currentItems = await itemsService.readMany(keys, {
           fields: [primaryKeyField, ...fields],
