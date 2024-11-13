@@ -20,8 +20,8 @@
     "typescript": "^5.4.3"
   },
   "dependencies": {
-    "@directus/api": "^19.3.1",
-    "@directus/extensions": "^1.0.8",
-    "@directus/types": "^11.1.3"
+    "@directus/api": "^23.1.2",
+    "@directus/extensions": "^2.0.4",
+    "@directus/types": "^12.2.1"
   }
 }
