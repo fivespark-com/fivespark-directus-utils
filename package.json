@@ -1,6 +1,6 @@
 {
   "name": "fivespark-directus-utils",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Directus tools and types by Fivespark",
   "type": "module",
   "main": "dist/index.js",
@@ -17,11 +17,11 @@
   },
   "types": "dist/index.d.ts",
   "devDependencies": {
+    "@directus/types": "^13.0.0",
     "typescript": "^5.4.3"
   },
   "dependencies": {
-    "@directus/api": "^23.1.2",
-    "@directus/extensions": "^2.0.4",
-    "@directus/types": "^12.2.1"
+    "@directus/api": "^24.0.0",
+    "@directus/extensions": "^3.0.0"
   }
 }
