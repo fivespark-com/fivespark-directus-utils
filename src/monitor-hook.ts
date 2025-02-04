@@ -18,6 +18,17 @@ export type FivesparkMonitorHookMutations<ItemType, IsPartial extends boolean> =
   current: IsPartial extends true ? Partial<ItemType> : ItemType;
   /**
    * Utility function to easily check for particular changes.
+   * NOTE: Always returns `false` for `delete` and `created` events
+   * @example
+   * mutation.hasChanged('status'); // true if status changed
+   * mutation.hasChanged('status', { from: 'draft' }); // true if status changed from 'draft' to something else
+   * mutation.hasChanged('status', { from: 'draft', to: 'published' }) // true if status changed from 'draft' to 'published'
+   * mutation.hasChanged('status', { to: 'published' }) // true if status changed from anything to 'published'
+   */
+  hasChanged(field: keyof ItemType, options?: { from?: any, to?: any }): boolean;
+  /**
+   * Utility function to easily check for particular changes.
+   * NOTE: Always returns `false` for `delete` and `created` events
    * @example
    * mutation.hasChanged('status'); // true if status changed
    * mutation.hasChanged('status', 'draft'); // true if status changed from 'draft' to something else
@@ -25,6 +36,40 @@ export type FivesparkMonitorHookMutations<ItemType, IsPartial extends boolean> =
    */
   hasChanged(field: keyof ItemType, from?: any, to?: any): boolean;
 }>;
+
+export const hasDateValue = (value: any) => {
+  if (value === null || typeof value === 'undefined') { return false; }
+  if (value instanceof Date) { return true; }
+  if (typeof value === 'number' && !isNaN(value)) { return true; }
+  if (typeof value === 'string' && !isNaN(Date.parse(value))) { return true; }
+  return false;
+}
+
+function hasChanged(field: string, previousItem: any, currentItem: any, compareMethod: 'simple' | 'smart', options?: { from?: any; to?: any }) {
+  let prev = previousItem[field] as any;
+  let current = currentItem[field] as any;
+  if (compareMethod === 'smart') {
+    if (prev && current && (prev instanceof Date || current instanceof Date)) {
+      const p = hasDateValue(prev) ? Date.parse(prev) : 0;
+      const c = hasDateValue(current) ? Date.parse(current) : 0;
+      if (!isNaN(p) && !isNaN(c)) {
+        prev = p;
+        current = c;
+      }
+    }
+    if (typeof current === 'number' && typeof prev === 'string' && /^[0-9\.]+$/.test(prev)) {
+      prev = parseFloat(prev);
+    }
+    if (typeof prev === 'number' && typeof current === 'string' && /^[0-9\.]+$/.test(current)) {
+      current = parseFloat(current);
+    }
+  }
+  return (
+    prev !== current &&
+    (typeof options?.from === 'undefined' || prev === options?.from) &&
+    (typeof options?.to === 'undefined' || current === options?.to)
+  );
+}
 
 let lastHookId = 0;
 export function createMonitorHook(
@@ -60,10 +105,16 @@ export function createMonitorHook(
           events?: Array<'create' | 'update' | 'delete'>;
           /**
            * Whether to use the accountability of the user that performed the update.
-           * Set to false if the user has no permissions to access the fields.
-           * @default true
+           * Set to true if you require the user to have read permissions to all monitored fields.
+           * @default false
            */
           useAccountability?: boolean;
+          /**
+           * Method to use when comparing previous with current values. If set to 'simple', the values must be strictly equal and of the same type.
+           * If set to 'smart', the values will be compared using smart comparison, which will consider values like 7.5 and '7.5' as equal, 
+           * and dates if they represent the same date in string or Date form.
+           */
+          compareMethod?: 'simple' | 'smart';
         },
     handler: // <
     // ---------------------------------------------------------------------------------------------------------------
@@ -86,12 +137,13 @@ export function createMonitorHook(
   ) {
     const monitorOptions = {
       fields: monitorFieldsOrOptions instanceof Array ? monitorFieldsOrOptions : monitorFieldsOrOptions.fields,
-      includeUnchanged: monitorFieldsOrOptions instanceof Array ? false : monitorFieldsOrOptions.includeUnchanged,
+      includeUnchanged: monitorFieldsOrOptions instanceof Array ? false : monitorFieldsOrOptions.includeUnchanged === true, // default to false if options are used, also if fields array is used (prevent breaking changes)
       events:
         monitorFieldsOrOptions instanceof Array || !monitorFieldsOrOptions.events
           ? ['create', 'update', 'delete']
           : monitorFieldsOrOptions.events,
-      useAccountability: monitorFieldsOrOptions instanceof Array ? true : monitorFieldsOrOptions.useAccountability,
+      useAccountability: monitorFieldsOrOptions instanceof Array ? true : monitorFieldsOrOptions.useAccountability === true, // default to false if options are used, true if fields array is used (prevent breaking changes)
+      compareMethod: monitorFieldsOrOptions instanceof Array ? 'simple' : monitorFieldsOrOptions.compareMethod ?? 'simple',
     };
     const logger = directus.logger.child({}, { msgPrefix: '[monitor hook]' });
     const mutationsInProgress: Record<
@@ -124,7 +176,7 @@ export function createMonitorHook(
           return;
         }
         if (!meta.event.endsWith('.items.update') && !meta.event.endsWith('.items.delete')) {
-          // Not an update event, error
+          // Not a create, update or delete event, error
           throw new Error(`Unexpected event ${meta.event}`);
         }
         const eventName = meta.event.split('.').pop() as 'create' | 'update' | 'delete';
@@ -200,12 +252,14 @@ export function createMonitorHook(
             }
           }
           try {
-            const mutations = [{ action: 'create', key: meta.key, previous: {}, current }] as Parameters<
+            const mutations = [{ action: 'create', key: meta.key, previous: {}, current, hasChanged(field, ...params) {
+              return false;
+            }, }] as Parameters<
               typeof handler
             >[0]; //as FivesparkMonitorHookMutations<ItemType, false>;
             await handler(mutations, { collection, event, payload }, context as any);
-          } catch (error) {
-            logger.error(`Error in monitor hook handler for event ${event}`, error);
+          } catch (error: any) {
+            logger.error(`Error in monitor hook handler for event ${event}: ${error.stack ?? error.message ?? error}`);
           }
           return;
         }
@@ -230,13 +284,13 @@ export function createMonitorHook(
               key: m.key,
               previous: m.data,
               current: {},
-              hasChanged(field, from, to) {
+              hasChanged(field, ...params) {
                 return false;
               },
             })) as Parameters<typeof handler>[0]; // as FivesparkMonitorHookMutations<ItemType, false>;
             await handler(mutations, { collection, event, payload }, context as any);
-          } catch (error) {
-            logger.error(`Error in monitor hook handler for event ${event}`, error);
+          } catch (error: any) {
+            logger.error(`Error in monitor hook handler for event ${event}: ${error.stack ?? error.message ?? error}`);
           }
         }
 
@@ -268,7 +322,7 @@ export function createMonitorHook(
             ...payload,
           };
 
-          const hasChangesToMonitoredFields = monitorOptions.fields.some((field) => previous[field] !== current[field]);
+          const hasChangesToMonitoredFields = monitorOptions.fields.some((field) => hasChanged(field as string, previous, current, monitorOptions.compareMethod));
           if (hasChangesToMonitoredFields) {
             // Shake out fields not being monitored and fields that didn't change (unless includeUnchanged is set to true)
             for (const field of [...Object.keys(previous), ...Object.keys(current)]) {
@@ -280,17 +334,16 @@ export function createMonitorHook(
                 delete current[field];
               }
             }
+            const useSmartComparison = monitorOptions.compareMethod === 'smart';
             mutations.push({
               action: 'update',
               key,
               previous,
               current,
-              hasChanged(field, from, to) {
-                return (
-                  this.previous[field] !== this.current[field] &&
-                  (typeof from === 'undefined' || this.previous[field] === from) &&
-                  (typeof to === 'undefined' || this.current[field] === to)
-                );
+              hasChanged(field, ...params) {
+                let from = params.length === 1 && typeof params[0] === 'object' ? params[0].from : params[0];
+                let to = params.length === 1 && typeof params[0] === 'object' ? params[0].to : params[1];
+                return hasChanged(field as string, from, to, monitorOptions.compareMethod, { from, to });
               },
             });
           }
@@ -300,8 +353,8 @@ export function createMonitorHook(
         if (mutations.length > 0) {
           try {
             await handler(mutations, { collection, event, payload }, context as any);
-          } catch (error) {
-            logger.error(`Error in monitor hook handler for event ${event}`, error);
+          } catch (error: any) {
+            logger.error(`Error in monitor hook handler for event ${event}: ${error.stack ?? error.message ?? error}`);
           }
         }
       });
