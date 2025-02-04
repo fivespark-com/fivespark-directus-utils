@@ -105,8 +105,8 @@ export function createMonitorHook(
           events?: Array<'create' | 'update' | 'delete'>;
           /**
            * Whether to use the accountability of the user that performed the update.
-           * Set to false if the user has no permissions to access the fields.
-           * @default true
+           * Set to true if you require the user to have read permissions to all monitored fields.
+           * @default false
            */
           useAccountability?: boolean;
           /**
@@ -137,12 +137,12 @@ export function createMonitorHook(
   ) {
     const monitorOptions = {
       fields: monitorFieldsOrOptions instanceof Array ? monitorFieldsOrOptions : monitorFieldsOrOptions.fields,
-      includeUnchanged: monitorFieldsOrOptions instanceof Array ? false : monitorFieldsOrOptions.includeUnchanged,
+      includeUnchanged: monitorFieldsOrOptions instanceof Array ? false : monitorFieldsOrOptions.includeUnchanged === true, // default to false if options are used, also if fields array is used (prevent breaking changes)
       events:
         monitorFieldsOrOptions instanceof Array || !monitorFieldsOrOptions.events
           ? ['create', 'update', 'delete']
           : monitorFieldsOrOptions.events,
-      useAccountability: monitorFieldsOrOptions instanceof Array ? true : monitorFieldsOrOptions.useAccountability,
+      useAccountability: monitorFieldsOrOptions instanceof Array ? true : monitorFieldsOrOptions.useAccountability === true, // default to false if options are used, true if fields array is used (prevent breaking changes)
       compareMethod: monitorFieldsOrOptions instanceof Array ? 'simple' : monitorFieldsOrOptions.compareMethod ?? 'simple',
     };
     const logger = directus.logger.child({}, { msgPrefix: '[monitor hook]' });
