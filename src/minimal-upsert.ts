@@ -1,4 +1,4 @@
-import type { DirectusRuntimeContext, FivesparkDataHubContext, MutationOptions, Item, PrimaryKey, FieldFilter } from './directus.js';
+import type { FivesparkDataHubContext, MutationOptions, Item, PrimaryKey, FieldFilter, ItemsService } from './directus.js';
 
 /**
  * Performs a minimal update to an existing item by checking which fields will actually change.
@@ -6,7 +6,7 @@ import type { DirectusRuntimeContext, FivesparkDataHubContext, MutationOptions, 
  */
 export async function minimalUpsert<T extends Item>(
   context: FivesparkDataHubContext,
-  service: InstanceType<DirectusRuntimeContext['services']['ItemsService']>,
+  service: ItemsService,
   data: Partial<T>,
   pkFilter?: FieldFilter,
   options?: MutationOptions,
