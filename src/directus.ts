@@ -3,7 +3,7 @@
 import type { Knex } from 'knex';
 export type { Knex } from 'knex';
 
-import type { AbstractService, Item, PrimaryKey, Accountability, SchemaOverview } from '@directus/types';
+import type { Item, PrimaryKey, Accountability, SchemaOverview, ExtensionsServices } from '@directus/types';
 export type {
   Filter,
   ClientFilterOperator,
@@ -26,10 +26,7 @@ export type {
 } from '@directus/types';
 import type { Request, Response, Router as CreateExpressRouter } from 'express';
 
-export type ItemsService<T extends Item = Item> = AbstractService<T> & {
-  collection: string;
-  schema: SchemaOverview;
-};
+export type ItemsService = InstanceType<ExtensionsServices['ItemsService']>;
 
 /**
  * Context available in action/filter hook contexts and endpoint requests
