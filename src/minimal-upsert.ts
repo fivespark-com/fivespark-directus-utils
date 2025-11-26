@@ -1,4 +1,4 @@
-import type { DirectusRuntimeContext, FivesparkDataHubContext, MutationOptions, Item, PrimaryKey, FieldFilter } from './directus.js';
+import type { FivesparkDataHubContext, MutationOptions, Item, PrimaryKey, FieldFilter, ItemsService, SchemaOverview } from './directus.js';
 
 /**
  * Performs a minimal update to an existing item by checking which fields will actually change.
@@ -6,12 +6,16 @@ import type { DirectusRuntimeContext, FivesparkDataHubContext, MutationOptions, 
  */
 export async function minimalUpsert<T extends Item>(
   context: FivesparkDataHubContext,
-  service: InstanceType<DirectusRuntimeContext['services']['ItemsService']>,
+  service: ItemsService,
   data: Partial<T>,
   pkFilter?: FieldFilter,
   options?: MutationOptions,
 ) {
-  const collectionInfo = context.event.schema.collections[service.collection]!;
+  const itemService = service as ItemsService & {
+    collection: string,
+    schema: SchemaOverview,
+  }
+  const collectionInfo = context.event.schema.collections[itemService.collection]!;
   const pkField = collectionInfo.primary;
   if (pkFilter && pkField in pkFilter && typeof pkFilter[pkField] === 'undefined') {
     delete pkFilter[pkField];
@@ -100,30 +104,30 @@ export async function minimalUpsert<T extends Item>(
     return result;
   }
 
-  const info = getUpdateInfo(service.collection, update);
+  const info = getUpdateInfo(itemService.collection, update);
 
   let currentItem: Item | undefined;
   const filter = { ...pkFilter, ...info.filter };
   if (pkFilter || typeof filter[pkField] !== 'undefined') {
     const fields = [pkField, ...info.fields];
-    const existing = await service.readByQuery({ fields, filter, deep: info.deep });
+    const existing = await itemService.readByQuery({ fields, filter, deep: info.deep });
     if (existing.length === 1) {
       currentItem = existing[0]!;
     }
     if (existing.length > 1) {
-      throw new Error(`Multiple ${service.collection} items found for filter ${JSON.stringify(filter)}`);
+      throw new Error(`Multiple ${itemService.collection} items found for filter ${JSON.stringify(filter)}`);
     }
   }
   if (!currentItem) {
     if (data[pkField] === null) {
       delete data[pkField];
     }
-    const pkValue = await service.createOne(update, options);
+    const pkValue = await itemService.createOne(update, options);
     return { key: pkValue, action: 'create' };
   }
 
   function getFieldInfo(targetField: string) {
-    let { collection } = service;
+    let { collection } = itemService;
     const isIndex = (str: string) => /^\d+$/.test(str);
     const parts = targetField.split('.');
     let targetFieldName = parts.pop()!;
@@ -174,7 +178,7 @@ export async function minimalUpsert<T extends Item>(
   function removeUnchangedValues(current: any, updated: any, targetField?: string) {
     const { collectionInfo, fieldInfo } = targetField
       ? getFieldInfo(targetField)
-      : { collectionInfo: service.schema.collections[service.collection]!, fieldInfo: null };
+      : { collectionInfo: itemService.schema.collections[itemService.collection]!, fieldInfo: null };
 
     const pkField = collectionInfo.primary;
     if (fieldInfo?.type !== 'json' && current instanceof Array && updated instanceof Array) {
@@ -245,6 +249,6 @@ export async function minimalUpsert<T extends Item>(
     return { key: pkValue, action: 'none' };
   }
 
-  await service.updateOne(pkValue, update, options);
+  await itemService.updateOne(pkValue, update, options);
   return { key: pkValue, action: 'update' };
 }

@@ -3,10 +3,7 @@
 import type { Knex } from 'knex';
 export type { Knex } from 'knex';
 
-import type { Item, PrimaryKey } from '@directus/types';
-export type { Item, PrimaryKey } from '@directus/types';
-export type { MutationOptions } from '@directus/api/types/index';
-export type { Query, DeepQuery, Aggregate, NestedDeepQuery } from '@directus/types';
+import type { Item, PrimaryKey, Accountability, SchemaOverview, ExtensionsServices } from '@directus/types';
 export type {
   Filter,
   ClientFilterOperator,
@@ -17,12 +14,19 @@ export type {
   LogicalFilter,
   LogicalFilterAND,
   LogicalFilterOR,
+  MutationOptions,
+  Query, 
+  DeepQuery, 
+  Aggregate, 
+  NestedDeepQuery,
+  Item, 
+  PrimaryKey,
+  SchemaOverview,
+  Accountability
 } from '@directus/types';
 import type { Request, Response, Router as CreateExpressRouter } from 'express';
-import { type Accountability } from '@directus/types';
-export { type Accountability } from '@directus/types';
-import { type SchemaOverview } from '@directus/types';
-import * as DirectusServices from '@directus/api/services/index';
+
+export type ItemsService = InstanceType<ExtensionsServices['ItemsService']>;
 
 /**
  * Context available in action/filter hook contexts and endpoint requests
@@ -90,12 +94,7 @@ import { createMonitorHook } from './monitor-hook.js';
 
 // Fix the type for `services` in `defineEndpoint` context callback function
 type EndpointConfigFunction = Extract<Parameters<typeof _defineEndpoint>[0], (router: any, context: any) => any>;
-type EndpointExtensionContext = Refactor<
-  Parameters<EndpointConfigFunction>[1],
-  {
-    services: typeof DirectusServices;
-  }
->;
+type EndpointExtensionContext = Parameters<EndpointConfigFunction>[1];
 
 /**
  * Wrapper function for `defineEndpoint` imported from `@directus/extensions-sdk`,
@@ -173,9 +172,7 @@ export type ApiFilterHookMetaData = {
 
 // Fix the type for `services` in `defineHook` context callback function
 type DirectusHookConfigFunction = Parameters<typeof _defineHook>[0];
-export type DirectusRuntimeContext = Omit<Parameters<DirectusHookConfigFunction>[1], 'services'> & {
-  services: typeof DirectusServices;
-};
+export type DirectusRuntimeContext = Parameters<DirectusHookConfigFunction>[1];
 
 // Fix the type for `action` and `filter` hook callback function parameters, add `mutations` hook
 export type DirectusHookRegisterFunctions = Parameters<DirectusHookConfigFunction>[0];
